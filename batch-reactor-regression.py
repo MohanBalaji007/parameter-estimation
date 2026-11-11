@@ -918,6 +918,7 @@ print(f"Scatter relative to 0.01 mol/L: {s/0.01:.2f}")
 
 # %% [markdown]
 # *Answer:*
+
 #
 # The residuals were calculated as the difference
 # between experimental and predicted concentrations.
@@ -993,6 +994,27 @@ print(f"Scatter relative to 0.01 mol/L: {s/0.01:.2f}")
 
 # %% [markdown]
 # *Answer:*
+#
+# In my computational project, I plan to develop a
+# numerical model to predict the swelling and shrinking
+# behavior of calcium-alginate microgels under different
+# NaCl and CaCl2 concentrations. Parameters such as
+# effective fixed-charge density, gel elasticity, and
+# ion diffusion coefficients may need to be estimated
+# by fitting the model to experimental data from the
+# literature or measurements from a research group.
+# Measurement uncertainty may depend on salt
+# concentration and microgel size, so errors may be
+# relative or concentration-dependent rather than
+# having the same absolute magnitude. Fixed-charge
+# density and gel elasticity may be correlated because
+# both influence equilibrium swelling. Similarly,
+# diffusion coefficients and transport parameters may
+# be correlated when fitting swelling-time data.
+# Examining parameter uncertainties and correlations
+# will be important for evaluating the reliability
+# of the model predictions.
+
 
 # %% [markdown]
 # ## Stretch problems (optional)
