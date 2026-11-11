@@ -329,6 +329,64 @@ plt.show()
 # or exothermic? How can you tell?
 
 # %%
+start_by_T = {
+    298.15: popt_298,
+    308.15: [0.04, 0.04],
+    323.15: [0.12, 0.10]
+}
+
+fits_by_T = {}
+
+print(f"{'T (K)':>9}  {'kf (1/s) +/- SE':>24}  {'kr (1/s) +/- SE':>24}  {'K +/- SE':>19}")
+
+for T in temperatures:
+
+    p, cov = scipy.optimize.curve_fit(
+        cA_model,
+        times,
+        cA_data[T],
+        p0=start_by_T[T],
+        bounds=(0, np.inf),
+        maxfev=20000
+    )
+
+    sd = np.sqrt(np.diag(cov))
+
+    kf, kr = p
+    K = kf / kr
+
+    # Propagate uncertainty in K using the covariance
+    gradient_K = np.array([1 / kr, -kf / kr**2])
+    sd_K = np.sqrt(gradient_K @ cov @ gradient_K)
+
+    fits_by_T[T] = {
+        "p": p,
+        "cov": cov,
+        "se": sd,
+        "K": K,
+        "se_K": sd_K
+    }
+
+    print(
+        f"{T:9.2f}  "
+        f"{kf:9.6f} +/- {sd[0]:8.6f}  "
+        f"{kr:9.6f} +/- {sd[1]:8.6f}  "
+        f"{K:8.4f} +/- {sd_K:7.4f}"
+    )
+
+kf_array = np.array([
+    fits_by_T[T]["p"][0] for T in temperatures
+])
+
+kr_array = np.array([
+    fits_by_T[T]["p"][1] for T in temperatures
+])
+
+K_array = kf_array / kr_array
+
+print("Because K increases with temperature,")
+print("the forward reaction is endothermic.")
+
 
 # %% [markdown]
 # **(b) Arrhenius.** As in Lecture 13: `scipy.stats.linregress` on $\ln k_f$ against
@@ -342,6 +400,103 @@ plt.show()
 # $\Delta H$ agree with what you said in (a)?
 
 # %%
+x_invT = 1 / temperatures
+
+arr = scipy.stats.linregress(
+    x_invT, np.log(kf_array)
+)
+
+vh = scipy.stats.linregress(
+    x_invT, np.log(K_array)
+)
+
+# Convert slopes and intercepts into parameters
+log10A_2 = arr.intercept / np.log(10)
+
+Ea_2 = -arr.slope * R / 1000
+
+dH_2 = -vh.slope * R / 1000
+
+dS_2 = vh.intercept * R
+
+# One-standard-error uncertainties
+se_log10A_2 = arr.intercept_stderr / np.log(10)
+
+se_Ea_2 = arr.stderr * R / 1000
+
+se_dH_2 = vh.stderr * R / 1000
+
+se_dS_2 = vh.intercept_stderr * R
+
+# Store results for Task 3
+popt_2 = np.array([
+    log10A_2, Ea_2, dH_2, dS_2
+])
+
+perr_2 = np.array([
+    se_log10A_2, se_Ea_2, se_dH_2, se_dS_2
+])
+
+print("Task 2: Estimated parameters")
+
+print(
+    f"log10(A) = {log10A_2:.4f} +/- "
+    f"{se_log10A_2:.4f}"
+)
+
+print(
+    f"Ea = {Ea_2:.4f} +/- "
+    f"{se_Ea_2:.4f} kJ/mol"
+)
+
+print(
+    f"Delta H = {dH_2:.4f} +/- "
+    f"{se_dH_2:.4f} kJ/mol"
+)
+
+print(
+    f"Delta S = {dS_2:.4f} +/- "
+    f"{se_dS_2:.4f} J/mol/K"
+)
+
+# Plot the Arrhenius and van 't Hoff fits
+fig, axes = plt.subplots(1, 2, figsize=(10, 3.5))
+
+axes[0].plot(
+    x_invT, np.log(kf_array), "ko",
+    label="Individual fits"
+)
+
+axes[0].plot(
+    x_invT,
+    arr.intercept + arr.slope * x_invT,
+    "b-", label="Linear fit"
+)
+
+axes[0].set_xlabel("1/T (1/K)")
+axes[0].set_ylabel("ln(kf)")
+axes[0].set_title("Arrhenius plot")
+axes[0].legend()
+
+axes[1].plot(
+    x_invT, np.log(K_array), "ko",
+    label="Individual fits"
+)
+
+axes[1].plot(
+    x_invT,
+    vh.intercept + vh.slope * x_invT,
+    "b-", label="Linear fit"
+)
+
+axes[1].set_xlabel("1/T (1/K)")
+axes[1].set_ylabel("ln(K)")
+axes[1].set_title("van 't Hoff plot")
+axes[1].legend()
+
+plt.tight_layout()
+plt.show()
+
 
 # %% [markdown]
 # **(d)** `linregress` gave you a ± on each of these. What does that ± know about,
@@ -350,6 +505,58 @@ plt.show()
 
 # %% [markdown]
 # *Answer:*
+# (a) Reaction behavior at three temperatures
+#
+# The forward and reverse reaction rate constants were
+# fitted independently at 298.15, 308.15, and 323.15 K.
+# The equilibrium constants were approximately 0.837,
+# 1.000, and 1.220, respectively.
+#
+# Since K increases with temperature, the forward
+# reaction A to B is endothermic. Higher temperatures
+# favor the formation of product B.
+#
+# (b) Arrhenius analysis
+#
+# Linear regression of ln(kf) against 1/T gave:
+# log10(A) = 9.201 +/- 0.172, with A in s^-1
+# Ea = 62.621 +/- 1.021 kJ/mol
+#
+# The activation energy was calculated from the
+# negative slope of the Arrhenius plot.
+#
+# (c) van 't Hoff analysis
+#
+# Linear regression of ln(K) against 1/T gave:
+# Delta H = +11.988 +/- 0.736 kJ/mol
+# Delta S = +38.794 +/- 2.379 J/mol/K
+#
+# The positive enthalpy change confirms that the
+# forward reaction is endothermic, consistent with
+# the increasing equilibrium constant.
+#
+# (d) Interpretation of uncertainties
+#
+# The uncertainties from linregress represent one
+# standard error estimated from the scatter of
+# the three points around each fitted straight line.
+#
+# However, these uncertainties do not directly
+# propagate the errors in kf and kr from fitting
+# the original concentration measurements.
+# Correlations between the fitted rate constants
+# are also not carried through to the line fits.
+#
+# Each regression contains only three points,
+# leaving one residual degree of freedom.
+# Therefore, the uncertainties are sensitive
+# to the small dataset and may not reflect the
+# complete uncertainty in the parameters.
+#
+# Simultaneously fitting all 30 concentration
+# measurements would provide a more direct
+# uncertainty analysis.
+
 
 # %% [markdown]
 # ## 3. All the data at once
