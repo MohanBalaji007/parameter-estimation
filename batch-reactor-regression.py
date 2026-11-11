@@ -594,23 +594,191 @@ print(T_all[:12], t_all[:12], cA_all[:12], sep='\n')
 # their ±.
 
 # %%
+
 def cA_model_all(x, log10A, Ea, dH, dS):
-    """C_A (mol/L) for every (T, t) pair in x. Ea and dH in kJ/mol, dS in J/mol/K."""
+    """Predict C_A for all temperature-time pairs."""
+
     T_col, t_col = x
-    
+
+    T_col = np.asarray(T_col, dtype=float)
+    t_col = np.asarray(t_col, dtype=float)
+
+    if T_col.shape != t_col.shape:
+        raise ValueError("Temperature and time arrays must match")
+
+    predictions = np.empty_like(t_col, dtype=float)
+
+    for T in np.unique(T_col):
+        mask = (T_col == T)
+
+        kf = 10**log10A * np.exp(
+            -Ea * 1000 / (R * T)
+        )
+
+        K = np.exp(
+            -dH * 1000 / (R * T) + dS / R
+        )
+
+        kr = kf / K
+
+        predictions[mask] = cA_model(
+            t_col[mask], kf, kr
+        )
+
+    return predictions
+
 
 
 # %%
 
+initial_guess = popt_2
+
+physical_bounds = (
+    [-2, 0, -100, -500],
+    [20, 200, 100, 500]
+)
+
+popt_joint, pcov_joint = scipy.optimize.curve_fit(
+    cA_model_all,
+    x_all,
+    cA_all,
+    p0=initial_guess,
+    bounds=physical_bounds,
+    maxfev=20000
+)
+
+perr_joint = np.sqrt(np.diag(pcov_joint))
+
+parameter_names = [
+    "log10(A)",
+    "Ea (kJ/mol)",
+    "Delta H (kJ/mol)",
+    "Delta S (J/mol/K)"
+]
+
+print("Task 3: Joint parameter estimation")
+
+for name, value, error in zip(
+    parameter_names, popt_joint, perr_joint
+):
+    print(f"{name}: {value:.4f} +/- {error:.4f}")
+
+
 # %% [markdown]
+prior_guess = np.array([6.0, 45.0, -10.0, -50.0])
+
+popt_prior, pcov_prior = scipy.optimize.curve_fit(
+    cA_model_all,
+    x_all,
+    cA_all,
+    p0=prior_guess,
+    bounds=physical_bounds,
+    maxfev=20000
+)
+
+print("Task 3 fitted parameters:")
+print(np.round(popt_joint, 4))
+
+print("Fit from original guesses:")
+print(np.round(popt_prior, 4))
+
+print("Do both fits agree?")
+print(np.allclose(
+    popt_joint, popt_prior,
+    atol=1e-3, rtol=0
+))
+
+print("Change from original estimates:")
+print(np.round(popt_prior - prior_guess, 4))
+
 # **(b)** Now start from your estimates from before the experiments instead (6, 45, −10, −50).
 # Does it find the same answer? How far did the data move you from what you expected?
 
 # %%
 
+prior_guess = np.array([6.0, 45.0, -10.0, -50.0])
+
+popt_prior, pcov_prior = scipy.optimize.curve_fit(
+    cA_model_all,
+    x_all,
+    cA_all,
+    p0=prior_guess,
+    bounds=physical_bounds,
+    maxfev=20000
+)
+
+print("Task 3 fitted parameters:")
+print(np.round(popt_joint, 4))
+
+print("Fit from original estimates:")
+print(np.round(popt_prior, 4))
+
+print("Do both fits agree?")
+print(np.allclose(
+    popt_joint,
+    popt_prior,
+    atol=1e-3,
+    rtol=0
+))
+
+print("Change from original estimates:")
+print(np.round(popt_prior - prior_guess, 4))
+
+
 # %% [markdown]
 # **(c)** Compare with task 2. Are the centres the same? Are the error bars? Which set of
 # error bars would you believe, and why?
+print("Comparison of Task 2 and Task 3")
+
+for i, name in enumerate(parameter_names):
+    print(f"\n{name}")
+    print(
+        f"Task 2: {popt_2[i]:.4f} +/- {perr_2[i]:.4f}"
+    )
+    print(
+        f"Task 3: {popt_joint[i]:.4f} +/- {perr_joint[i]:.4f}"
+    )
+
+# Task 3(d): Correlation matrix
+
+correlation = pcov_joint / np.outer(
+    perr_joint, perr_joint
+)
+
+print("\nCorrelation matrix:")
+print(np.round(correlation, 4))
+
+fig, ax = plt.subplots(figsize=(6, 5))
+
+im = ax.imshow(
+    correlation,
+    cmap="coolwarm",
+    vmin=-1,
+    vmax=1
+)
+
+labels = ["log10(A)", "Ea", "Delta H", "Delta S"]
+
+ax.set_xticks(range(4))
+ax.set_yticks(range(4))
+ax.set_xticklabels(labels, rotation=45, ha="right")
+ax.set_yticklabels(labels)
+
+for i in range(4):
+    for j in range(4):
+        ax.text(
+            j, i,
+            f"{correlation[i,j]:.3f}",
+            ha="center",
+            va="center"
+        )
+
+plt.colorbar(im, ax=ax, label="Correlation")
+ax.set_title("Task 3: Parameter Correlation Matrix")
+
+plt.tight_layout()
+plt.show()
+
 #
 # **(d) The correlation matrix.** The off-diagonal elements of `pcov` say how the errors in
 # the parameters go together (Lecture 13). Turn the covariance into correlations:
@@ -622,7 +790,68 @@ def cA_model_all(x, log10A, Ea, dH, dS):
 
 # %% [markdown]
 # *Answer:*
-
+# (a) Simultaneous parameter estimation
+#
+# All 30 concentration measurements were fitted
+# simultaneously using the Arrhenius equation,
+# van 't Hoff equation, and batch reactor ODE.
+#
+# The estimated parameters were:
+# log10(A) = 9.4885 +/- 0.3672, A in s^-1
+# Ea = 64.3078 +/- 2.1377 kJ/mol
+# Delta H = 11.5315 +/- 0.7905 kJ/mol
+# Delta S = 37.3495 +/- 2.5129 J/mol/K
+#
+# All uncertainties represent one standard error.
+#
+# (b) Effect of initial estimates
+#
+# Starting from the original estimates
+# (6, 45, -10, -50) produced essentially the
+# same solution as starting from Task 2.
+#
+# The fitted parameters were significantly
+# different from the original estimates.
+#
+# (c) Comparison with Task 2
+#
+# Task 2 and Task 3 gave similar but not identical
+# parameter estimates and different uncertainties.
+#
+# Task 2 involved separate kinetic fits followed
+# by linear regressions at three temperatures.
+# Those regressions did not fully propagate the
+# uncertainties of the individual rate constants.
+#
+# Task 3 fitted all 30 concentration measurements
+# directly. I place more confidence in its
+# uncertainty estimates because they account
+# for the original measurements and covariance.
+#
+# These uncertainties still depend on the model
+# and measurement-error assumptions.
+#
+# (d) Parameter correlations
+#
+# The correlation between log10(A) and Ea
+# was approximately +0.9997.
+#
+# The correlation between Delta H and Delta S
+# was approximately +0.9996.
+#
+# Changes in activation energy can be compensated
+# by changes in the pre-exponential factor.
+#
+# Similarly, Delta H and Delta S can compensate
+# for each other in the van 't Hoff relationship.
+#
+# The narrow temperature range from 298.15 K
+# to 323.15 K makes the parameter correlations
+# particularly strong.
+#
+# Reporting only individual parameter uncertainties
+# would hide these correlations and the joint
+# uncertainty in the fitted parameters.
 # %% [markdown]
 # ## 4. Look at the residuals
 #
