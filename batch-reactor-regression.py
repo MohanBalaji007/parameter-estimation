@@ -855,6 +855,7 @@ plt.show()
 # %% [markdown]
 # ## 4. Look at the residuals
 #
+#
 # **Always look at the residuals** (Lecture 13). Plot the residuals of the task 3 fit against
 # time, one colour per temperature, with a line at zero.
 #
@@ -869,9 +870,117 @@ plt.show()
 #   What would that tell you about your model, or about the experiment?
 
 # %%
+predicted_all = cA_model_all(x_all, *popt_joint)
+residual_all = cA_all - predicted_all
+
+fig, ax = plt.subplots(figsize=(7, 4))
+
+for T in temperatures:
+    mask = (T_all == T)
+
+    ax.plot(
+        t_all[mask],
+        residual_all[mask],
+        "o-",
+        label=f"{T:.2f} K"
+    )
+
+ax.axhline(0, color="black", linestyle="--")
+ax.set_xlabel("Time (s)")
+ax.set_ylabel("Residual (mol/L)")
+ax.set_title("Residuals vs Time")
+ax.legend()
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+# Calculate residual standard deviation
+N = len(cA_all)
+p = len(popt_joint)
+
+RSS = np.sum(residual_all**2)
+s = np.sqrt(RSS / (N - p))
+
+print("Task 4: Residual Analysis")
+print("Number of measurements:", N)
+print("Number of parameters:", p)
+print(f"RSS = {RSS:.6f}")
+print(f"Estimated scatter = {s:.6f} mol/L")
+
+# Compare scatter at each temperature
+for T in temperatures:
+    mask = T_all == T
+    rms = np.sqrt(np.mean(residual_all[mask]**2))
+    print(f"{T:.2f} K: RMS = {rms:.6f} mol/L")
+
+print(f"Scatter relative to 0.01 mol/L: {s/0.01:.2f}")
 
 # %% [markdown]
 # *Answer:*
+#
+# The residuals were calculated as the difference
+# between experimental and predicted concentrations.
+#
+# The residuals fluctuate around zero without a
+# clear systematic trend with time. This suggests
+# that the model captures the main concentration
+# changes reasonably well.
+#
+# However, random-looking residuals do not
+# necessarily prove that the model is correct.
+#
+# Comparison of residual scatter
+#
+# The RMS residuals at the three temperatures were:
+#
+# 298.15 K: 0.1132 mol/L
+# 308.15 K: 0.0562 mol/L
+# 323.15 K: 0.0676 mol/L
+#
+# The scatter is greater at 298.15 K than at the
+# other two temperatures.
+#
+# This suggests that the equal-variance assumption
+# may not be completely appropriate. However,
+# only ten measurements were taken at each
+# temperature, so the evidence is limited.
+#
+# Estimated measurement uncertainty
+#
+# The residual sum of squares was 0.205433.
+#
+# Number of measurements: N = 30
+# Number of fitted parameters: p = 4
+#
+# s = sqrt(RSS / (N - p))
+#
+# s = sqrt(0.205433 / 26)
+#
+# s = 0.088889 mol/L
+#
+# The typical difference between experimental
+# and predicted concentrations is approximately
+# 0.089 mol/L, assuming the model is appropriate
+# and measurement errors are independent with
+# equal variance.
+#
+# Comparison with instrument precision
+#
+# The instrument precision is +/- 0.01 mol/L.
+# The observed residual scatter is about
+# 0.089 mol/L, approximately 8.9 times larger.
+#
+# Therefore, instrument precision alone is
+# unlikely to explain the observed scatter.
+#
+# Additional variation may come from experimental
+# conditions, uncontrolled variables, model
+# limitations, or other measurement errors.
+#
+# Further experiments and residual analysis
+# would help identify these sources of variation.
+
 
 # %% [markdown]
 # ## 5. Your project
