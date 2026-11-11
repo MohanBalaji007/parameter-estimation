@@ -104,10 +104,63 @@ plt.show()
 # solution.)
 
 # %%
-def cA_model(times, kf, kr):
-    """C_A (mol/L) at each of `times` (s), for rate constants kf and kr (1/s)."""
-    
 
+def cA_model(times, kf, kr):
+    """Calculate C_A using an ODE solver."""
+    times = np.asarray(times, dtype=float)
+
+    if np.any(times < 0):
+        raise ValueError("Time cannot be negative")
+    if kf < 0 or kr < 0:
+        raise ValueError("Rate constants must be nonnegative")
+    if times.size == 0:
+        return np.array([])
+    if np.max(times) == 0:
+        return np.full(times.shape, cA0)
+
+    unique_times, order = np.unique(
+        times, return_inverse=True
+    )
+
+    def rhs(t, y):
+        CA = y[0]
+        CB = cA0 - CA
+        return [kr * CB - kf * CA]
+
+    sol = scipy.integrate.solve_ivp(
+        rhs,
+        (0, float(unique_times[-1])),
+        [cA0],
+        t_eval=unique_times,
+        rtol=1e-8,
+        atol=1e-10
+    )
+
+    if not sol.success:
+        raise RuntimeError(sol.message)
+
+    return sol.y[0][order]
+
+
+# Test against analytical solution
+t_test = np.array([0, 5, 10, 20, 50, 100.])
+kf_test = 0.03
+kr_test = 0.02
+
+Ceq = cA0 * kr_test / (kf_test + kr_test)
+
+CA_exact = Ceq + (cA0 - Ceq) * np.exp(
+    -(kf_test + kr_test) * t_test
+)
+
+CA_numerical = cA_model(t_test, kf_test, kr_test)
+
+assert np.allclose(
+    CA_numerical, CA_exact,
+    rtol=1e-6, atol=1e-7
+)
+
+print("Task 1(a): ODE test passed")
 
 # your test here
 
@@ -121,7 +174,72 @@ def cA_model(times, kf, kr):
 
 # %%
 
+import warnings
+
+# Try fitting without an initial guess
+try:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        default_fit, default_cov = scipy.optimize.curve_fit(
+            cA_model,
+            times,
+            cA_data[298.15],
+            maxfev=3000
+        )
+
+    print("Default fit:", default_fit)
+
+    for warning in caught:
+        print("Warning:", warning.message)
+
+except (ValueError, RuntimeError, TypeError) as error:
+    print("Fit without p0 failed:", error)
+
+# Examine default starting values
+default_prediction = cA_model(times, 1.0, 1.0)
+
+plt.plot(times, cA_data[298.15], "ko",
+         label="Experimental data")
+plt.plot(times, default_prediction, "r--",
+         label="Default starting guess")
+plt.xlabel("Time (s)")
+plt.ylabel("C_A (mol/L)")
+plt.legend()
+plt.show()
+
+
 # %%
+
+# Estimate initial parameters from the data
+Ceq_guess = 5.5
+half_time_guess = 18.0
+
+rate_sum_guess = np.log(2) / half_time_guess
+
+kr_guess = rate_sum_guess * Ceq_guess / cA0
+kf_guess = rate_sum_guess - kr_guess
+
+print("Initial guesses:")
+print("kf =", kf_guess)
+print("kr =", kr_guess)
+
+# Fit the model
+popt_298, pcov_298 = scipy.optimize.curve_fit(
+    cA_model,
+    times,
+    cA_data[298.15],
+    p0=[kf_guess, kr_guess],
+    bounds=(0, np.inf),
+    maxfev=20000
+)
+
+# Calculate parameter uncertainties
+perr_298 = np.sqrt(np.diag(pcov_298))
+
+print("Fitted parameters at 298.15 K:")
+print(f"kf = {popt_298[0]:.6f} +/- {perr_298[0]:.6f} 1/s")
+print(f"kr = {popt_298[1]:.6f} +/- {perr_298[1]:.6f} 1/s")
+
 
 # %% [markdown]
 # **(c) Look at it.** Plot the data and the fitted curve, and below it the residuals
@@ -132,8 +250,74 @@ def cA_model(times, kf, kr):
 
 # %%
 
+# Generate fitted concentrations
+t_dense = np.linspace(0, 100, 301)
+
+model_298 = cA_model(times, *popt_298)
+residual_298 = cA_data[298.15] - model_298
+
+# Create two plots
+fig, axes = plt.subplots(
+    2, 1,
+    sharex=True,
+    figsize=(6, 5),
+    gridspec_kw={"height_ratios": [2, 1]}
+)
+
+# Experimental data and fitted curve
+axes[0].plot(times, cA_data[298.15], "ko",
+             label="Experimental data")
+
+axes[0].plot(
+    t_dense,
+    cA_model(t_dense, *popt_298),
+    "b-",
+    label="Fitted model"
+)
+
+axes[0].set_ylabel("C_A (mol/L)")
+axes[0].legend()
+
+# Residual plot
+axes[1].plot(times, residual_298, "bo")
+axes[1].axhline(0, color="black", linestyle="--")
+axes[1].set_xlabel("Time (s)")
+axes[1].set_ylabel("Data - Model (mol/L)")
+
+plt.tight_layout()
+plt.show()
+
 # %% [markdown]
 # *Answer:*
+# The numerical ODE solution agrees with the analytical
+# solution for the reversible first-order reaction.
+# The assertion test confirms the accuracy of solve_ivp.
+#
+# Without specifying p0, curve_fit starts with
+# kf = kr = 1 s^-1. These values predict that the
+# concentration reaches approximately 5 mol/L very
+# quickly, which differs from the experimental data.
+# In this calculation, the fit without p0 failed
+# because the optimizer attempted a negative rate
+# constant, which was rejected by the model.
+#
+# I estimated the equilibrium concentration as
+# approximately 5.5 mol/L and the half-time as 18 s.
+# From these estimates, the initial guesses were
+# kf = 0.0173 s^-1 and kr = 0.0212 s^-1.
+#
+# The fitted rate constants at 298.15 K are:
+# kf = 0.01680 +/- 0.00079 s^-1
+# kr = 0.02006 +/- 0.00154 s^-1
+#
+# The uncertainties represent one standard error
+# from the covariance matrix, not 95% intervals.
+#
+# The fitted concentration curve follows the measured
+# data closely. The residuals fluctuate around zero,
+# indicating a reasonable fit without a strong
+# systematic pattern.
+
 
 # %% [markdown]
 # ## 2. Three temperatures, in two steps
